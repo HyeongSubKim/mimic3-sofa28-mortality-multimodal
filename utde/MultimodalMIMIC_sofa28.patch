@@ -1,0 +1,243 @@
+diff --git a/data.py b/data.py
+index f33956c..52c99e5 100644
+--- a/data.py
++++ b/data.py
+@@ -72,6 +72,17 @@ class TSNote_Irg(Dataset):
+         self.model_name=args.model_name
+         self.num_of_notes=args.num_of_notes
+         self.tt_max=args.tt_max
++        # optional term-guided global attention: regex over a clinical term list (trailing * = stem match)
++        self.term_re=None
++        if getattr(args,'term_global_attention',None):
++            import re
++            pats=[]
++            for t in open(args.term_global_attention):
++                t=t.strip().lower()
++                if not t: continue
++                t=re.escape(t).replace(r'\ ',r'\s+').replace(r'\-',r'[-\s]?')
++                pats.append(t[:-2]+r'\w*' if t.endswith(r'\*') else t)
++            self.term_re=re.compile(r'(?<![\w/])(?:'+'|'.join(pats)+r')(?![\w/])',re.I)
+     def __getitem__(self, idx):
+ 
+         if self.notes_order!=None:
+@@ -81,11 +92,11 @@ class TSNote_Irg(Dataset):
+             notes_order= 'Last' if self.order_sample[idx]==1  else 'First'
+         data_detail = self.data[idx]
+         idx=data_detail['name']
+-        reg_ts=data_detail['reg_ts']
+-        ts=data_detail['irg_ts']
++        reg_ts=np.asarray(data_detail['reg_ts'],dtype=np.float32)
++        ts=np.asarray(data_detail['irg_ts'],dtype=np.float32)        # pickles may store plain lists (numpy-version independent)
+ 
+ 
+-        ts_mask=data_detail['irg_ts_mask']
++        ts_mask=np.asarray(data_detail['irg_ts_mask'],dtype=np.int64)
+         text = data_detail['text_data']
+ 
+ 
+@@ -105,12 +116,21 @@ class TSNote_Irg(Dataset):
+                                                     max_length=self.max_len,\
+                                                     add_special_tokens=True,\
+                                                     return_attention_mask = True,\
+-                                                    truncation=True)
++                                                    truncation=True,\
++                                                    return_offsets_mapping=self.term_re is not None)
+                 text_token.append(torch.tensor(inputs['input_ids'],dtype=torch.long))
+                 attention_mask=inputs['attention_mask']
+                 if "Longformer" in self.model_name :
+ 
+                     attention_mask[0]+=1
++                    if self.term_re is not None:          # global attention on tokens that overlap a clinical term
++                        spans=[m.span() for m in self.term_re.finditer(t)]
++                        if spans:
++                            for i,(a,b) in enumerate(inputs['offset_mapping']):
++                                if i==0 or b<=a: continue
++                                for (s0,e0) in spans:
++                                    if a<e0 and b>s0:
++                                        attention_mask[i]=2; break
+                     atten_mask.append(torch.tensor(attention_mask,dtype=torch.long))
+                 else:
+                     atten_mask.append(torch.tensor(attention_mask,dtype=torch.long))
+diff --git a/main.py b/main.py
+index 8a25fba..457a4fa 100644
+--- a/main.py
++++ b/main.py
+@@ -64,9 +64,9 @@ def main():
+ 
+ 
+     if 'Text' in args.modeltype:
+-        model= MULTCrossModel(args=args,device=device,orig_d_ts=17, orig_reg_d_ts=34, orig_d_txt=768,ts_seq_num=args.tt_max,text_seq_num=args.num_of_notes,Biobert=BioBert)
++        model= MULTCrossModel(args=args,device=device,orig_d_ts=args.orig_d_ts, orig_reg_d_ts=2*args.orig_d_ts, orig_d_txt=768,ts_seq_num=args.tt_max,text_seq_num=args.num_of_notes,Biobert=BioBert)
+     else:
+-        model= TSMixed(args=args,device=device,orig_d_ts=17,orig_reg_d_ts=34, ts_seq_num=args.tt_max)
++        model= TSMixed(args=args,device=device,orig_d_ts=args.orig_d_ts,orig_reg_d_ts=2*args.orig_d_ts, ts_seq_num=args.tt_max)
+ 
+     print(device)
+ 
+diff --git a/run_attr.sh b/run_attr.sh
+new file mode 100755
+index 0000000..51d5fa5
+--- /dev/null
++++ b/run_attr.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++# UTDE attribution on the SOFA-28d test split. Usage: GPU=1 W=24 bash run_attr.sh
++set -euo pipefail
++export CUDA_VISIBLE_DEVICES=${GPU:-1}
++export HF_HOME=${HF_HOME:-$HOME/.cache/huggingface} TOKENIZERS_PARALLELISM=false PYTHONNOUSERSITE=1
++export CLINICAL_LONGFORMER_PATH=$(ls -d $HF_HOME/hub/models--yikuan8--Clinical-Longformer/snapshots/*/ | head -1)
++export ATTR_OUT=${ATTR_OUT:-../mimic-icu-mortality/results/fusion_shap}
++W=${W:-24}
++[ -f "$ATTR_OUT/utde_attr_W${W}.npz" ] && { echo "exists: utde_attr_W${W}.npz, skipping"; exit 0; }
++${PY:-python} -W ignore utde_attr.py --num_train_epochs 6 --modeltype 'TS_Text' \
++    --kernel_size 1 --train_batch_size 2 --eval_batch_size 16 --seed 42 \
++    --gradient_accumulation_steps 16 --num_update_bert_epochs 2 --bertcount 3 \
++    --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
++    --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3 \
++    --output_dir "run/sofa28_W${W}/" --embed_dim 128 \
++    --model_name "bioLongformer" --task 'ihm' --file_path "Data/sofa28/W${W}" \
++    --num_labels 2 --num_heads 8 --embed_time 64 --tt_max $W --orig_d_ts 21 --select_metric auc \
++    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level batch_seq_feature
+diff --git a/run_sofa28.sh b/run_sofa28.sh
+new file mode 100755
+index 0000000..fb01e64
+--- /dev/null
++++ b/run_sofa28.sh
+@@ -0,0 +1,20 @@
++#!/usr/bin/env bash
++# UTDE (TS_Text, bioLongformer) on the SOFA / lactate / base-excess cohort, 28-day mortality, first W hours.
++# Usage: GPU=1 W=24 [EPOCHS=6] [PY=/path/to/python] [HF_HOME=...] [EXTRA="--debug"] bash run_sofa28.sh
++set -euo pipefail
++export CUDA_VISIBLE_DEVICES=${GPU:-0}
++export HF_HOME=${HF_HOME:-$HOME/.cache/huggingface}
++export TOKENIZERS_PARALLELISM=false
++export PYTHONNOUSERSITE=1                       # the env must not see ~/.local packages
++export CLINICAL_LONGFORMER_PATH=$(ls -d $HF_HOME/hub/models--yikuan8--Clinical-Longformer/snapshots/*/ | head -1)
++W=${W:-24}; EPOCHS=${EPOCHS:-6}; SEED=${SEED:-42}; MIXUP=${MIXUP:-batch_seq_feature}
++PY=${PY:-python}                                 # interpreter of the UTDE env (python 3.8, torch 1.13, transformers 4.16)
++$PY -W ignore main.py --num_train_epochs $EPOCHS --modeltype 'TS_Text' \
++    --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --seed $SEED \
++    --gradient_accumulation_steps 16 --num_update_bert_epochs 2 --bertcount 3 \
++    --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
++    --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3 \
++    --output_dir "run/sofa28_W${W}${TAG:-}/" --embed_dim 128 \
++    --model_name "bioLongformer" --task 'ihm' --file_path "Data/sofa28/W${W}" \
++    --num_labels 2 --num_heads 8 --embed_time 64 --tt_max $W --orig_d_ts 21 --select_metric auc \
++    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level $MIXUP --fp16 ${TERMS:+--term_global_attention $TERMS} ${EXTRA:-}
+diff --git a/train.py b/train.py
+index 1514487..5f4c636 100644
+--- a/train.py
++++ b/train.py
+@@ -179,6 +179,10 @@ def evaluate_irg(args,device,data_loader,model,mode=None):
+             eval_val=f1_score(np.array(eval_example), all_pred)
+             eval_vals['f1']=eval_val
+             if mode==None:
+-                check_point(eval_vals, model, eval_logits, args,"f1")
++                check_point(eval_vals, model, eval_logits, args,args.select_metric)
++            elif mode=='test':
++                os.makedirs(args.ck_file_path, exist_ok=True)
++                np.savez(os.path.join(args.ck_file_path, f'test_logits_{args.seed}.npz'), logits=all_logits, labels=all_label)
++                print('saved test probabilities to', args.ck_file_path, 'n =', len(all_logits))
+ 
+     return eval_vals
+diff --git a/utde_attr.py b/utde_attr.py
+new file mode 100755
+index 0000000..ba1a35b
+--- /dev/null
++++ b/utde_attr.py
+@@ -0,0 +1,68 @@
++"""Attribution for the trained UTDE model (TS_Text) on the SOFA-28d test split: modality-level Shapley values (2 players:
++time series, notes -> exact from 4 forward passes) and per-channel occlusion (zero a channel's values and mask in both the
++irregular and the imputed-grid inputs).  Notes are "removed" by replacing them with the placeholder note used for stays
++without notes during training (in-distribution).  Same CLI arguments as run_sofa28.sh; W given by --tt_max.
++Writes <out_dir>/utde_attr_W{W}.npz with per-case probabilities for every configuration.
++"""
++import os, sys, json, pickle, numpy as np, torch
++from util import *
++from model import *
++from data import *
++from checkpoint import *
++
++PLACEHOLDER = 'No clinical note available in this window.'
++CHANNELS = 'HR,RR,SpO2,Temp,SBP,DBP,MeanBP,ASBP,ADBP,MeanABP,FiO2,O2flow,PaO2,Platelets,Bilirubin,Creatinine,Lactate,BaseExcess,GCS,Urine,Vasopressor'.split(',')
++
++
++def main():
++    out_dir = os.environ['ATTR_OUT']
++    args = parse_args(); set_seed(args.seed); make_save_dir(args)
++    device = torch.device('cuda')
++    BioBert, _, tokenizer = loadBert(args, device)
++    _, _, loader = data_perpare(args, 'test', tokenizer)
++    model = MULTCrossModel(args=args, device=device, orig_d_ts=args.orig_d_ts, orig_reg_d_ts=2 * args.orig_d_ts, orig_d_txt=768,
++                           ts_seq_num=args.tt_max, text_seq_num=args.num_of_notes, Biobert=BioBert).to(device)
++    ck = torch.load(os.path.join(args.ck_file_path, 'auc', f'{args.seed}.pth.tar'), map_location=device)
++    model.load_state_dict(ck['network']); model.eval()
++    enc = tokenizer.encode_plus(PLACEHOLDER, add_special_tokens=True, return_attention_mask=True)
++    ph_ids = torch.tensor(enc['input_ids']); ph_mask = torch.tensor(enc['attention_mask']); ph_mask[0] += 1   # Longformer global [CLS]
++
++    batches = list(loader)                      # tokenise once; every occlusion pass re-uses the same tensors
++    print('batches materialised', len(batches), flush=True)
++
++    def run(drop_notes=False, drop_ts=False, drop_channel=None):
++        probs, labels = [], []
++        for batch in batches:
++            ts, ts_mask, ts_tt, reg_ts, ids, am, nt, ntm, label = batch
++            ts, ts_mask, reg_ts = ts.clone(), ts_mask.clone(), reg_ts.clone()
++            D = args.orig_d_ts
++            if drop_ts:
++                ts.zero_(); ts_mask.zero_(); reg_ts.zero_()
++            if drop_channel is not None:
++                c = drop_channel; ts[:, :, c] = 0; ts_mask[:, :, c] = 0; reg_ts[:, :, c] = 0; reg_ts[:, :, D + c] = 0
++            if drop_notes:
++                B = ts.shape[0]; L = len(ph_ids)
++                ids = torch.zeros(B, args.num_of_notes, L, dtype=torch.long); am = torch.zeros_like(ids)
++                ids[:, 0] = ph_ids; am[:, 0] = ph_mask
++                nt = torch.zeros(B, args.num_of_notes); nt[:, 0] = 1.0
++                ntm = torch.zeros(B, args.num_of_notes, dtype=torch.long); ntm[:, 0] = 1
++            with torch.no_grad():
++                p = model(x_ts=ts.to(device), x_ts_mask=ts_mask.to(device), ts_tt_list=ts_tt.to(device), input_ids_sequences=ids.to(device),
++                          attn_mask_sequences=am.to(device), note_time_list=nt.to(device), note_time_mask_list=ntm.to(device), reg_ts=reg_ts.to(device))
++            probs.append(p.float().cpu().numpy()); labels.append(label.numpy())
++        return np.concatenate(probs), np.concatenate(labels)
++
++    res = {}
++    res['full'], y = run(); print('full done, auc', roc_auc_score(y, res['full']), flush=True)
++    res['no_notes'], _ = run(drop_notes=True); print('no_notes auc', roc_auc_score(y, res['no_notes']), flush=True)
++    res['no_ts'], _ = run(drop_ts=True); print('no_ts auc', roc_auc_score(y, res['no_ts']), 'nan', int(np.isnan(res['no_ts']).sum()), flush=True)
++    res['none'], _ = run(drop_notes=True, drop_ts=True); print('none done', flush=True)
++    for c, name in enumerate(CHANNELS):
++        res[f'drop_{name}'], _ = run(drop_channel=c); print(f'drop {name} auc {roc_auc_score(y, res[f"drop_{name}"]):.4f}', flush=True)
++    np.savez(os.path.join(out_dir, f'utde_attr_W{args.tt_max}.npz'), y=y, channels=np.array(CHANNELS), **res)
++    print('saved', flush=True)
++
++
++if __name__ == '__main__':
++    from sklearn.metrics import roc_auc_score
++    main()
+diff --git a/util.py b/util.py
+index 615ea06..8474700 100644
+--- a/util.py
++++ b/util.py
+@@ -114,6 +114,9 @@ def parse_args():
+     parser.add_argument("--irregular_learn_emb_text", action='store_true')
+     parser.add_argument("--reg_ts", action='store_true')
+     parser.add_argument("--tt_max", default=48, type=int, help="max time for irregular time series.")
++    parser.add_argument("--orig_d_ts", default=17, type=int, help="number of time-series channels in the data (17 for mimic3-benchmarks).")
++    parser.add_argument("--select_metric", default='f1', type=str, help="validation metric used to keep the best checkpoint (f1 = original, auc).")
++    parser.add_argument("--term_global_attention", default=None, type=str, help="file with one clinical term per line; tokens matching a term get Longformer global attention (in addition to [CLS]).")
+     parser.add_argument("--embed_time", default=64, type=int, help="emdedding for time.")
+     parser.add_argument('--ts_to_txt', action='store_true')
+     parser.add_argument('--txt_to_ts', action='store_true')
+@@ -157,8 +160,10 @@ def loadBert(args,device):
+             tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+             BioBert = BertModel.from_pretrained("bert-base-uncased")
+         elif args.model_name== "bioLongformer":
+-            tokenizer = AutoTokenizer.from_pretrained("yikuan8/Clinical-Longformer")
+-            BioBert= AutoModel.from_pretrained("yikuan8/Clinical-Longformer")
++            # transformers 4.16 cannot read the new hub cache layout; allow a local snapshot directory via env var
++            lf = os.environ.get("CLINICAL_LONGFORMER_PATH", "yikuan8/Clinical-Longformer")
++            tokenizer = AutoTokenizer.from_pretrained(lf)
++            BioBert= AutoModel.from_pretrained(lf)
+ 
+         else:
+             raise ValueError("model_name should be BioBert,bioRoberta,bioLongformer or Bert")

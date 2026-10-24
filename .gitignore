@@ -1,0 +1,10 @@
+data
+data/
+logs
+logs/
+results/**/*.parquet
+results/**/*.npz
+results/**/*.npy
+results/**/*.csv
+results/**/*.pkl
+__pycache__/

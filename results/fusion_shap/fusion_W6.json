@@ -1,0 +1,14 @@
+{
+ "coef_tabpfn": 0.5536929672782107,
+ "coef_utde": 0.5398066806474936,
+ "intercept": 0.16555298764153137,
+ "mean_abs_shap_tabpfn": 0.6006789799377035,
+ "mean_abs_shap_utde": 0.5494149124428521,
+ "share_tabpfn": 0.5222869053711523,
+ "corr_logits": 0.6686912547351312,
+ "disagree_frac": 0.25791324736225085,
+ "auroc_fusion_agree": 0.8826657378381517,
+ "auroc_fusion_disagree": 0.5975653419262442,
+ "auroc_tabpfn_disagree": 0.6592672156581931,
+ "auroc_utde_disagree": 0.3892469268409118
+}

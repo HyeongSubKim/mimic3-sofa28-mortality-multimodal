@@ -1,0 +1,11 @@
+# Environment for 10_tabpfn_tiers.py, 14_late_fusion.py, 21_fusion_shap.py, 22_fusion_shap_figs.py (python 3.12 used here)
+tabpfn==9.2.0
+torch==2.6.0            # cu124 wheel; any CUDA build that matches the driver works
+numpy==2.2.4
+pandas==2.2.3
+pyarrow==19.0.1
+scikit-learn==1.6.1
+scipy==1.15.2
+shap==0.54.1
+matplotlib==3.10.6
+huggingface_hub         # downloads the open checkpoint Prior-Labs/TabPFN-v2-clf (no token needed)

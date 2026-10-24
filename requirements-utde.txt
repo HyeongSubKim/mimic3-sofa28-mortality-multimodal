@@ -1,0 +1,11 @@
+# Environment for the UTDE reference code (python 3.8; pins from the original repo, installed with PYTHONNOUSERSITE=1)
+# install torch first: pip install torch==1.13.1+cu117 --index-url https://download.pytorch.org/whl/cu117
+torch==1.13.1
+transformers==4.16.2
+tokenizers==0.11.6
+accelerate==0.6.2
+numpy==1.21.6
+pandas==1.4.1
+scikit-learn==1.0.2
+tensorboardX==2.4.1
+tqdm

@@ -9,3 +9,4 @@ results/**/*.csv
 results/**/*.pkl
 __pycache__/
 !results/fusion_shap/tabpfn_shap_W*.csv
+!results/fusion_shap/fusion_feature_attr_W*.csv

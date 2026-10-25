@@ -1,0 +1,82 @@
+[
+ {
+  "model": "TabPFN (structured)",
+  "auroc": 0.8317499766170949,
+  "auprc": 0.681186353946432,
+  "d_vs_tabpfn": 0.0,
+  "ci": [
+   0.0,
+   0.0
+  ]
+ },
+ {
+  "model": "UTDE time series only",
+  "auroc": 0.797380446546679,
+  "auprc": 0.6424424085321759,
+  "d_vs_tabpfn": -0.03480578739425237,
+  "ci": [
+   -0.06374938873387759,
+   -0.005793203106833852
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE time series only",
+  "auroc": 0.8408091821327882,
+  "auprc": 0.6973759014813992,
+  "d_vs_tabpfn": 0.00885020294740157,
+  "ci": [
+   -0.0025681937274835863,
+   0.020288353749323463
+  ]
+ },
+ {
+  "model": "UTDE time series + notes",
+  "auroc": 0.7978180409134031,
+  "auprc": 0.617748218935698,
+  "d_vs_tabpfn": -0.03387476192131955,
+  "ci": [
+   -0.06579083884658353,
+   -0.002986747706949868
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE time series + notes",
+  "auroc": 0.8453721890407664,
+  "auprc": 0.7040322137695246,
+  "d_vs_tabpfn": 0.01371105873672997,
+  "ci": [
+   -0.00223656286224321,
+   0.02904715598389016
+  ]
+ },
+ {
+  "model": "UTDE with the tabular variable set (15 channels: SOFA inputs, lactate, BE, vent, age, sex) + notes",
+  "auroc": 0.8227976643818228,
+  "auprc": 0.6580617905061418,
+  "d_vs_tabpfn": -0.00892495834819221,
+  "ci": [
+   -0.030517985224876774,
+   0.01341084192284879
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE with the tabular variable set (15 channels: SOFA inputs, lactate, BE, vent, age, sex) + notes",
+  "auroc": 0.8392725912267339,
+  "auprc": 0.6877913292567419,
+  "d_vs_tabpfn": 0.007560313087819059,
+  "ci": [
+   -0.007505270824894569,
+   0.02323262332210792
+  ]
+ },
+ {
+  "model": "TabPFN-embedding UTDE, 3 streams (TabPFN tokens + time series + notes)",
+  "auroc": 0.835771836292941,
+  "auprc": 0.7004760739397633,
+  "d_vs_tabpfn": 0.003923817936029292,
+  "ci": [
+   -0.012066970895420479,
+   0.01969436603616982
+  ]
+ }
+]

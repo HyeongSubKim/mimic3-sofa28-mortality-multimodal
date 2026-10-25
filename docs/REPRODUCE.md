@@ -80,6 +80,17 @@ cd ../MultimodalMIMIC && GPU=0 W=24 PY=... ATTR_OUT=../<this repo>/results/fusio
 python scripts/08_fusion_shap_figs.py --window 6 24               # -> results/fusion_shap/*.png
 ```
 
+## 6. Optional: TabPFN inside UTDE and variable-fair controls
+
+```bash
+HF_HOME=... python scripts/09_tabpfn_embeddings.py --windows 24 6 --out ../MultimodalMIMIC/Data/sofa28   # frozen TabPFN tokens per stay
+cd ../MultimodalMIMIC && GPU=0 W=24 MODE=concat bash run_tabemb.sh                                        # 3-stream: TabPFN tokens + time series + notes
+python scripts/05_build_utde_dataset.py --windows 24 6 --channel-set sofa --out ../MultimodalMIMIC/Data/sofa28_sofa   # UTDE on TabPFN's variables only
+cd ../MultimodalMIMIC && GPU=0 W=24 DATA_DIR=Data/sofa28_sofa D_TS=15 TAG=_sofavars bash run_sofa28.sh
+python scripts/10_fusion_variants.py --window 24      # all UTDE variants + their fusion with TabPFN on one table
+HF_HOME=... python scripts/11_tabpfn_vitals.py --window 24   # TabPFN + vital-sign aggregates (fair structured baseline)
+```
+
 ## Pitfalls
 
 * The pickles store plain lists on purpose: numpy-2 pickles cannot be read by the numpy 1.21 of the UTDE environment.

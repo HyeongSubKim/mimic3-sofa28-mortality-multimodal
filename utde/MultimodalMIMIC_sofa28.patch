@@ -1,12 +1,15 @@
 diff --git a/data.py b/data.py
-index f33956c..52c99e5 100644
+index f33956c..a0a25ac 100644
 --- a/data.py
 +++ b/data.py
-@@ -72,6 +72,17 @@ class TSNote_Irg(Dataset):
+@@ -72,6 +72,20 @@ class TSNote_Irg(Dataset):
          self.model_name=args.model_name
          self.num_of_notes=args.num_of_notes
          self.tt_max=args.tt_max
 +        # optional term-guided global attention: regex over a clinical term list (trailing * = stem match)
++        self.tab_emb=None                                     # frozen TabPFN embeddings keyed by ICUSTAY_ID (replace the TS stream)
++        if getattr(args,'tab_emb',None):
++            z=np.load(args.tab_emb); self.tab_emb={int(i):e for i,e in zip(z['ids'],z['emb'])}
 +        self.term_re=None
 +        if getattr(args,'term_global_attention',None):
 +            import re
@@ -20,7 +23,7 @@ index f33956c..52c99e5 100644
      def __getitem__(self, idx):
  
          if self.notes_order!=None:
-@@ -81,11 +92,11 @@ class TSNote_Irg(Dataset):
+@@ -81,11 +95,11 @@ class TSNote_Irg(Dataset):
              notes_order= 'Last' if self.order_sample[idx]==1  else 'First'
          data_detail = self.data[idx]
          idx=data_detail['name']
@@ -35,7 +38,14 @@ index f33956c..52c99e5 100644
          text = data_detail['text_data']
  
  
-@@ -105,12 +116,21 @@ class TSNote_Irg(Dataset):
+@@ -99,18 +113,28 @@ class TSNote_Irg(Dataset):
+         text_time_to_end=data_detail["text_time_to_end"]
+ 
+         reg_ts=F_impute(ts,ts_tt,ts_mask,1,self.tt_max)
++        tab_emb=torch.tensor(self.tab_emb[int(idx)],dtype=torch.float) if self.tab_emb is not None else None   # [8, 192]
+         if 'Text' in self.modeltype :
+             for t in text:
+                 inputs = self.tokenizer.encode_plus(t, padding=self.padding,\
                                                      max_length=self.max_len,\
                                                      add_special_tokens=True,\
                                                      return_attention_mask = True,\
@@ -58,6 +68,49 @@ index f33956c..52c99e5 100644
                      atten_mask.append(torch.tensor(attention_mask,dtype=torch.long))
                  else:
                      atten_mask.append(torch.tensor(attention_mask,dtype=torch.long))
+@@ -135,15 +159,16 @@ class TSNote_Irg(Dataset):
+         text_time_to_end=torch.tensor(text_time_to_end,dtype=torch.float)
+         text_time_mask=torch.tensor(text_time_mask,dtype=torch.long)
+ 
++        extra={'tab_emb':tab_emb} if tab_emb is not None else {}
+         if 'Text' not in self.modeltype:
+-            return {'idx':idx,'ts':ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts':reg_ts,"label":label}
++            return {'idx':idx,'ts':ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts':reg_ts,"label":label, **extra}
+         if notes_order=="Last":
+             return {'idx':idx,'ts':ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt,'reg_ts':reg_ts, "input_ids":text_token[-self.num_of_notes:],"label":label, "attention_mask":atten_mask[-self.num_of_notes:], \
+-            'note_time':text_time_to_end[-self.num_of_notes:], 'text_time_mask': text_time_mask[-self.num_of_notes:],
++            'note_time':text_time_to_end[-self.num_of_notes:], 'text_time_mask': text_time_mask[-self.num_of_notes:], **extra
+                }
+         else:
+             return {'idx':idx,'ts':ts, 'ts_mask': ts_mask, 'ts_tt': ts_tt, 'reg_ts':reg_ts,"input_ids":text_token[:self.num_of_notes],"label":label, "attention_mask":atten_mask[:self.num_of_notes] ,\
+-             'note_time':text_time_to_end[:self.num_of_notes],'text_time_mask': text_time_mask[:self.num_of_notes]
++             'note_time':text_time_to_end[:self.num_of_notes],'text_time_mask': text_time_mask[:self.num_of_notes], **extra
+                }
+ 
+     def __len__(self):
+@@ -176,7 +201,8 @@ def TextTSIrgcollate_fn(batch):
+     label=torch.stack([example["label"] for example in batch])
+ 
+     reg_ts_input=torch.stack([example['reg_ts'] for example in batch])
+-    if len(batch[0])>6:
++    tab_emb=torch.stack([example['tab_emb'] for example in batch]) if 'tab_emb' in batch[0] else None
++    if len(batch[0])>6+('tab_emb' in batch[0]):
+         input_ids=[pad_sequence(example['input_ids'],batch_first=True,padding_value=0).transpose(0,1) for example in batch]
+         attn_mask=[pad_sequence(example['attention_mask'],batch_first=True,padding_value=0).transpose(0,1) for example in batch]
+ 
+@@ -188,8 +214,10 @@ def TextTSIrgcollate_fn(batch):
+ 
+     else:
+         input_ids,attn_mask, note_time, note_time_mask =None,None,None,None
+-    return ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts_input, \
+-         input_ids,attn_mask, note_time ,note_time_mask, label
++    out=[ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts_input, input_ids,attn_mask, note_time ,note_time_mask, label]
++    if tab_emb is not None:
++        out.append(tab_emb)
++    return tuple(out)
+ 
+ 
+ 
 diff --git a/main.py b/main.py
 index 8a25fba..457a4fa 100644
 --- a/main.py
@@ -100,13 +153,13 @@ index 0000000..51d5fa5
 +    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level batch_seq_feature
 diff --git a/run_sofa28.sh b/run_sofa28.sh
 new file mode 100755
-index 0000000..fb01e64
+index 0000000..27dafeb
 --- /dev/null
 +++ b/run_sofa28.sh
 @@ -0,0 +1,20 @@
 +#!/usr/bin/env bash
 +# UTDE (TS_Text, bioLongformer) on the SOFA / lactate / base-excess cohort, 28-day mortality, first W hours.
-+# Usage: GPU=1 W=24 [EPOCHS=6] [PY=/path/to/python] [HF_HOME=...] [EXTRA="--debug"] bash run_sofa28.sh
++# Usage: GPU=1 W=24 [EPOCHS=6] [PY=/path/to/python] [HF_HOME=...] [DATA_DIR=Data/sofa28_sofa D_TS=15 TAG=_sofavars] [EXTRA="--debug"] bash run_sofa28.sh
 +set -euo pipefail
 +export CUDA_VISIBLE_DEVICES=${GPU:-0}
 +export HF_HOME=${HF_HOME:-$HOME/.cache/huggingface}
@@ -121,14 +174,77 @@ index 0000000..fb01e64
 +    --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
 +    --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3 \
 +    --output_dir "run/sofa28_W${W}${TAG:-}/" --embed_dim 128 \
++    --model_name "bioLongformer" --task 'ihm' --file_path "${DATA_DIR:-Data/sofa28}/W${W}" \
++    --num_labels 2 --num_heads 8 --embed_time 64 --tt_max $W --orig_d_ts ${D_TS:-21} --select_metric auc \
++    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level $MIXUP --fp16 ${TERMS:+--term_global_attention $TERMS} ${EXTRA:-}
+diff --git a/run_tabemb.sh b/run_tabemb.sh
+new file mode 100755
+index 0000000..512651d
+--- /dev/null
++++ b/run_tabemb.sh
+@@ -0,0 +1,19 @@
++#!/usr/bin/env bash
++# UTDE structure with the time-series stream replaced by frozen TabPFN embeddings (notes branch unchanged).
++# Usage: GPU=0 W=24 [PY=...] bash run_tabemb.sh
++set -euo pipefail
++export CUDA_VISIBLE_DEVICES=${GPU:-0}
++export HF_HOME=${HF_HOME:-/mnt/nas5/AIBL-Research/hskim/.cache/huggingface} TOKENIZERS_PARALLELISM=false PYTHONNOUSERSITE=1
++export CLINICAL_LONGFORMER_PATH=$(ls -d $HF_HOME/hub/models--yikuan8--Clinical-Longformer/snapshots/*/ | head -1)
++W=${W:-24}; EPOCHS=${EPOCHS:-6}; SEED=${SEED:-42}; MODE=${MODE:-replace}; [ "$MODE" = concat ] && MODE_TAG=3 || MODE_TAG=""
++PY=${PY:-/mnt/nas5/AIBL-Research/hskim/.envs/mulehr/bin/python}
++$PY -W ignore main.py --num_train_epochs $EPOCHS --modeltype 'TS_Text' \
++    --kernel_size 1 --train_batch_size 2 --eval_batch_size 8 --seed $SEED \
++    --gradient_accumulation_steps 16 --num_update_bert_epochs 2 --bertcount 3 \
++    --ts_learning_rate 0.0004 --txt_learning_rate 0.00002 \
++    --notes_order 'Last' --num_of_notes 5 --max_length 1024 --layers 3 \
++    --output_dir "run/sofa28_W${W}_tabemb${MODE_TAG:-}/" --embed_dim 128 \
 +    --model_name "bioLongformer" --task 'ihm' --file_path "Data/sofa28/W${W}" \
 +    --num_labels 2 --num_heads 8 --embed_time 64 --tt_max $W --orig_d_ts 21 --select_metric auc \
-+    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level $MIXUP --fp16 ${TERMS:+--term_global_attention $TERMS} ${EXTRA:-}
++    --irregular_learn_emb_text --irregular_learn_emb_ts --reg_ts --TS_mixup --mixup_level batch_seq_feature --fp16 \
++    --tab_emb "Data/sofa28/W${W}/tabpfn_emb.npz" --tab_emb_mode ${MODE:-replace} ${EXTRA:-}
 diff --git a/train.py b/train.py
-index 1514487..5f4c636 100644
+index 1514487..5912a04 100644
 --- a/train.py
 +++ b/train.py
-@@ -179,6 +179,10 @@ def evaluate_irg(args,device,data_loader,model,mode=None):
+@@ -74,7 +74,8 @@ def trainer_irg (model,args,accelerator,train_dataloader,dev_dataloader,test_dat
+         for step, batch in tqdm(enumerate(train_dataloader)):
+             global_step+=1
+ 
+-            ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts , input_ids_sequences,attn_mask_sequences, note_time ,note_time_mask, label = batch
++            ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts , input_ids_sequences,attn_mask_sequences, note_time ,note_time_mask, label, *extra = batch
++            tab_emb = extra[0] if extra else None
+ 
+             if "Text" not in args.modeltype:
+                 loss=model(x_ts=ts_input_sequences, \
+@@ -88,7 +89,7 @@ def trainer_irg (model,args,accelerator,train_dataloader,dev_dataloader,test_dat
+                         ts_tt_list=ts_tt,\
+                         input_ids_sequences=input_ids_sequences,\
+                         attn_mask_sequences=attn_mask_sequences, note_time_list=note_time,\
+-                        note_time_mask_list=note_time_mask,labels=label,reg_ts=reg_ts)
++                        note_time_mask_list=note_time_mask,labels=label,reg_ts=reg_ts,tab_emb=tab_emb)
+             loss = loss / args.gradient_accumulation_steps
+             accelerator.backward(loss)
+ 
+@@ -127,7 +128,8 @@ def evaluate_irg(args,device,data_loader,model,mode=None):
+     eval_example = []
+     for idx,batch in enumerate(tqdm(data_loader)):
+ 
+-        ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts,input_ids_sequences,attn_mask_sequences, note_time ,note_time_mask, label  = batch
++        ts_input_sequences,ts_mask_sequences, ts_tt, reg_ts,input_ids_sequences,attn_mask_sequences, note_time ,note_time_mask, label, *extra  = batch
++        tab_emb = extra[0] if extra else None
+ 
+ 
+         with torch.no_grad():
+@@ -145,7 +147,7 @@ def evaluate_irg(args,device,data_loader,model,mode=None):
+                         ts_tt_list=ts_tt,\
+                         input_ids_sequences=input_ids_sequences,\
+                         attn_mask_sequences=attn_mask_sequences, note_time_list=note_time,\
+-                        note_time_mask_list=note_time_mask,reg_ts=reg_ts)
++                        note_time_mask_list=note_time_mask,reg_ts=reg_ts,tab_emb=tab_emb)
+             if torch.isnan(logits).any():
+                 import pdb;
+                 pdb.set_trace()
+@@ -179,6 +181,10 @@ def evaluate_irg(args,device,data_loader,model,mode=None):
              eval_val=f1_score(np.array(eval_example), all_pred)
              eval_vals['f1']=eval_val
              if mode==None:
@@ -215,10 +331,19 @@ index 0000000..ba1a35b
 +    from sklearn.metrics import roc_auc_score
 +    main()
 diff --git a/util.py b/util.py
-index 615ea06..8474700 100644
+index 615ea06..9bb3450 100644
 --- a/util.py
 +++ b/util.py
-@@ -114,6 +114,9 @@ def parse_args():
+@@ -102,6 +102,8 @@ def parse_args():
+     )
+ 
+     parser.add_argument('--chunk', action='store_true')
++    parser.add_argument('--tab_emb', type=str, default=None, help='npz of frozen TabPFN embeddings (ids, emb[n,8,192]) added as 8 tokens to the TS_Text model')
++    parser.add_argument('--tab_emb_mode', type=str, default='replace', choices=['replace', 'concat'], help='replace: TabPFN tokens instead of the time-series stream; concat: TabPFN tokens appended to the time-series tokens (3 streams)')
+     parser.add_argument("--chunk_type", default='sent_doc_pos', type=str, help="How to chunk the text. sent_doc_pos: sentence level position + doc level position")
+     parser.add_argument("--warmup_proportion", default=0.10, type=float, help="proportion for the warmup in the lr scheduler.")
+     parser.add_argument("--kernel_size", type=int, default=1, help="Kernel size for CNN.")
+@@ -114,6 +116,9 @@ def parse_args():
      parser.add_argument("--irregular_learn_emb_text", action='store_true')
      parser.add_argument("--reg_ts", action='store_true')
      parser.add_argument("--tt_max", default=48, type=int, help="max time for irregular time series.")
@@ -228,7 +353,7 @@ index 615ea06..8474700 100644
      parser.add_argument("--embed_time", default=64, type=int, help="emdedding for time.")
      parser.add_argument('--ts_to_txt', action='store_true')
      parser.add_argument('--txt_to_ts', action='store_true')
-@@ -157,8 +160,10 @@ def loadBert(args,device):
+@@ -157,8 +162,10 @@ def loadBert(args,device):
              tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
              BioBert = BertModel.from_pretrained("bert-base-uncased")
          elif args.model_name== "bioLongformer":

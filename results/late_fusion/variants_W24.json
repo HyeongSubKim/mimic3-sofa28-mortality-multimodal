@@ -1,0 +1,92 @@
+[
+ {
+  "model": "TabPFN (structured)",
+  "auroc": 0.8372604408995237,
+  "auprc": 0.672570249744767,
+  "d_vs_tabpfn": 0.0,
+  "ci": [
+   0.0,
+   0.0
+  ]
+ },
+ {
+  "model": "UTDE time series only",
+  "auroc": 0.8274745208817991,
+  "auprc": 0.6425499862486754,
+  "d_vs_tabpfn": -0.009349736221376428,
+  "ci": [
+   -0.029366698555993987,
+   0.010747220973842802
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE time series only",
+  "auroc": 0.8502021712639858,
+  "auprc": 0.6830386051037575,
+  "d_vs_tabpfn": 0.01315225827389759,
+  "ci": [
+   0.0025306737853615898,
+   0.02362779743368754
+  ]
+ },
+ {
+  "model": "UTDE time series + notes",
+  "auroc": 0.8436842251024703,
+  "auprc": 0.6795932589740403,
+  "d_vs_tabpfn": 0.006673628811852678,
+  "ci": [
+   -0.013097526526420555,
+   0.026093510015991004
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE time series + notes",
+  "auroc": 0.8597069901406891,
+  "auprc": 0.7068222836569377,
+  "d_vs_tabpfn": 0.02258164069217355,
+  "ci": [
+   0.010311626719603997,
+   0.034891877015868884
+  ]
+ },
+ {
+  "model": "UTDE with the tabular variable set (15 channels: SOFA inputs, lactate, BE, vent, age, sex) + notes",
+  "auroc": 0.8256272848122299,
+  "auprc": 0.6575696209247264,
+  "d_vs_tabpfn": -0.011323185335369877,
+  "ci": [
+   -0.024882695826744742,
+   0.00214919298128483
+  ]
+ },
+ {
+  "model": "late fusion TabPFN + UTDE with the tabular variable set (15 channels: SOFA inputs, lactate, BE, vent, age, sex) + notes",
+  "auroc": 0.8405754957350172,
+  "auprc": 0.6804772575107056,
+  "d_vs_tabpfn": 0.0034302151505704722,
+  "ci": [
+   -0.0021967652955304255,
+   0.009135823232081295
+  ]
+ },
+ {
+  "model": "TabPFN-embedding UTDE (TabPFN tokens + notes)",
+  "auroc": 0.8361720394372438,
+  "auprc": 0.6708672035893181,
+  "d_vs_tabpfn": -0.0010620462256595603,
+  "ci": [
+   -0.006284746390389473,
+   0.004146184683804371
+  ]
+ },
+ {
+  "model": "TabPFN-embedding UTDE, 3 streams (TabPFN tokens + time series + notes)",
+  "auroc": 0.8676345962113658,
+  "auprc": 0.7310951884253105,
+  "d_vs_tabpfn": 0.030616552936819856,
+  "ci": [
+   0.01540365689109682,
+   0.04605427004659951
+  ]
+ }
+]

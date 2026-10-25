@@ -46,6 +46,13 @@ RANGES = {'HR': (0, 300), 'RR': (0, 100), 'SpO2': (0, 100), 'Temp': (25, 45), 'S
           'GCS': (3, 15), 'Urine': (0, 5000)}
 CHANNELS = ['HR', 'RR', 'SpO2', 'Temp', 'SBP', 'DBP', 'MeanBP', 'ASBP', 'ADBP', 'MeanABP', 'FiO2', 'O2flow', 'PaO2', 'Platelets',
             'Bilirubin', 'Creatinine', 'Lactate', 'BaseExcess', 'GCS', 'Urine', 'Vasopressor']
+# --channel-set sofa: the same variables as the tabular model (SOFA inputs + lactate + BE + ventilation + age/sex), no extra vitals
+SOFA_CHANNELS = ['FiO2', 'PaO2', 'Platelets', 'Bilirubin', 'Creatinine', 'MeanBP', 'MeanABP', 'GCS', 'Urine', 'Vasopressor',
+                 'Lactate', 'BaseExcess', 'Vent', 'Age', 'Sex']
+VENT_ITEMS = {720, 223849, 223848, 445, 448, 449, 450, 1340, 1486, 1600, 224687, 639, 654, 681, 682, 683, 684, 224685,
+              224684, 224686, 218, 436, 535, 444, 224697, 224695, 224696, 224746, 224747, 221, 1, 1211, 1655, 2000,
+              226873, 224738, 224419, 224750, 227187, 543, 5865, 5866, 224707, 224709, 224705, 224706, 60, 437, 505,
+              506, 686, 220339, 224700, 3459, 501, 502, 503, 224702, 223, 667, 668, 669, 670, 671, 672, 224701}
 
 
 def hourly_long(st, W):
@@ -60,6 +67,10 @@ def hourly_long(st, W):
     ce['channel'] = ce.channel.replace({'TempF': 'Temp', 'TempC': 'Temp'})
     m = ce.channel.eq('FiO2') & (ce.VALUENUM <= 1); ce.loc[m, 'VALUENUM'] *= 100
     frames.append(ce[['ICUSTAY_ID', 'CHARTTIME', 'channel', 'VALUENUM']].rename(columns={'CHARTTIME': 't', 'VALUENUM': 'value'}))
+    cev = pd.read_parquet(DATA / 'chartevents.parquet', columns=['ICUSTAY_ID', 'ITEMID', 'CHARTTIME'])
+    cev = cev[cev.ITEMID.isin(VENT_ITEMS) & cev.ICUSTAY_ID.isin(ids)].copy(); cev['ICUSTAY_ID'] = cev.ICUSTAY_ID.astype('int64')
+    cev['channel'] = 'Vent'; cev['value'] = 1.0
+    frames.append(cev[['ICUSTAY_ID', 'CHARTTIME', 'channel', 'value']].rename(columns={'CHARTTIME': 't'}))
     lab = pd.read_parquet(DATA / 'labevents_sofa.parquet').merge(st.reset_index()[['HADM_ID', 'ICUSTAY_ID']], on='HADM_ID')
     lab = lab[lab.ITEMID.isin(LAB)].copy(); lab['channel'] = lab.ITEMID.map(LAB)
     frames.append(lab[['ICUSTAY_ID', 'CHARTTIME', 'channel', 'VALUENUM']].rename(columns={'CHARTTIME': 't', 'VALUENUM': 'value'}))
@@ -88,8 +99,8 @@ def hourly_long(st, W):
     agg = L.groupby(['ICUSTAY_ID', 'hour', 'channel']).value.agg(lambda s: s.sum() if s.name == 'Urine' else s.mean())
     # urine: sum per hour, vasopressor: any; everything else: mean  (done channel-wise below)
     sums = L[L.channel == 'Urine'].groupby(['ICUSTAY_ID', 'hour', 'channel']).value.sum()
-    anys = L[L.channel == 'Vasopressor'].groupby(['ICUSTAY_ID', 'hour', 'channel']).value.max()
-    means = L[~L.channel.isin(['Urine', 'Vasopressor'])].groupby(['ICUSTAY_ID', 'hour', 'channel']).value.mean()
+    anys = L[L.channel.isin(['Vasopressor', 'Vent'])].groupby(['ICUSTAY_ID', 'hour', 'channel']).value.max()
+    means = L[~L.channel.isin(['Urine', 'Vasopressor', 'Vent'])].groupby(['ICUSTAY_ID', 'hour', 'channel']).value.mean()
     return pd.concat([means, sums, anys]).reset_index()
 
 
@@ -109,20 +120,28 @@ def main():
     ap.add_argument('--windows', type=int, nargs='+', default=[6, 24])
     ap.add_argument('--features-dir', default='results/features')
     ap.add_argument('--out', default='../MultimodalMIMIC/Data/sofa28')
+    ap.add_argument('--channel-set', default='full', choices=['full', 'sofa'], help='full = 21 benchmark channels; sofa = the tabular model\'s variables')
     args = ap.parse_args()
+    chans = SOFA_CHANNELS if args.channel_set == 'sofa' else CHANNELS
     icu = pd.read_parquet(DATA / 'icustays.parquet', columns=['ICUSTAY_ID', 'HADM_ID', 'INTIME']).set_index('ICUSTAY_ID')
     icu['INTIME'] = pd.to_datetime(icu.INTIME)
     for W in args.windows:
-        f = pd.read_parquet(ROOT / args.features_dir / f'features_W{W}.parquet', columns=['SUBJECT_ID', 'dataset', 'y28'])
+        f = pd.read_parquet(ROOT / args.features_dir / f'features_W{W}.parquet', columns=['SUBJECT_ID', 'dataset', 'y28', 'age', 'sex'])
         st = f.join(icu)
         long = hourly_long(st, W)
+        long = long[long.channel.isin(chans)]
+        if args.channel_set == 'sofa':                     # age / sex as constant channels on every observed hour of the stay
+            hrs = long[['ICUSTAY_ID', 'hour']].drop_duplicates()
+            for name, col in (('Age', 'age'), ('Sex', 'sex')):
+                long = pd.concat([long, hrs.assign(channel=name, value=hrs.ICUSTAY_ID.map(st[col]).astype(float))], ignore_index=True)
         notes = notes_for(st, W)
         # z-score with train statistics (Vasopressor stays binary)
         tr_ids = set(st.index[st.dataset == 'train'])
-        stats = long[long.ICUSTAY_ID.isin(tr_ids) & (long.channel != 'Vasopressor')].groupby('channel').value.agg(['mean', 'std'])
+        binary = ['Vasopressor', 'Vent', 'Sex']
+        stats = long[long.ICUSTAY_ID.isin(tr_ids) & ~long.channel.isin(binary)].groupby('channel').value.agg(['mean', 'std'])
         long = long.merge(stats, left_on='channel', right_index=True, how='left')
-        long['z'] = np.where(long.channel == 'Vasopressor', long.value, (long.value - long['mean']) / long['std'].replace(0, 1))
-        ch_idx = {c: i for i, c in enumerate(CHANNELS)}
+        long['z'] = np.where(long.channel.isin(binary), long.value, (long.value - long['mean']) / long['std'].replace(0, 1))
+        ch_idx = {c: i for i, c in enumerate(chans)}
         out_dir = Path(args.out) / f'W{W}'; out_dir.mkdir(parents=True, exist_ok=True)
         counts = {}
         for split in ['train', 'val', 'test']:
@@ -134,16 +153,16 @@ def main():
                 if g is None or g.empty:
                     continue
                 hours = np.sort(g.hour.unique())
-                X = np.zeros((len(hours), len(CHANNELS)), dtype=np.float32); M = np.zeros_like(X, dtype=np.int64)
+                X = np.zeros((len(hours), len(chans)), dtype=np.float32); M = np.zeros_like(X, dtype=np.int64)
                 hrow = {h: i for i, h in enumerate(hours)}
                 for r in g.itertuples(index=False):
                     X[hrow[r.hour], ch_idx[r.channel]] = r.z; M[hrow[r.hour], ch_idx[r.channel]] = 1
-                reg = np.zeros((W, 2 * len(CHANNELS)), dtype=np.float32)
-                last = np.zeros(len(CHANNELS), dtype=np.float32)
+                reg = np.zeros((W, 2 * len(chans)), dtype=np.float32)
+                last = np.zeros(len(chans), dtype=np.float32)
                 for h in range(W):
                     if h in hrow:
-                        m = M[hrow[h]] == 1; last[m] = X[hrow[h]][m]; reg[h, len(CHANNELS):] = m
-                    reg[h, :len(CHANNELS)] = last
+                        m = M[hrow[h]] == 1; last[m] = X[hrow[h]][m]; reg[h, len(chans):] = m
+                    reg[h, :len(chans)] = last
                 txt, tte = notes.get(sid, ([PLACEHOLDER], [0.0]))
                 # plain lists: the UTDE environment runs numpy 1.21, which cannot unpickle numpy-2 arrays (numpy._core)
                 inst.append({'name': int(sid), 'irg_ts': X.tolist(), 'irg_ts_mask': M.tolist(), 'ts_tt': hours.astype(float).tolist(), 'reg_ts': reg.tolist(),
@@ -154,7 +173,7 @@ def main():
                              'notes_per_stay_median': float(np.median([len(i['text_data']) for i in inst])),
                              'ts_rows_median': float(np.median([len(i['ts_tt']) for i in inst]))}
             print(W, split, counts[split], flush=True)
-        json.dump({'channels': CHANNELS, 'tt_max': W, 'train_stats': stats.to_dict(), 'counts': counts}, open(out_dir / 'channels.json', 'w'), indent=1)
+        json.dump({'channels': chans, 'tt_max': W, 'train_stats': stats.to_dict(), 'counts': counts}, open(out_dir / 'channels.json', 'w'), indent=1)
     print('saved', args.out)
 
 

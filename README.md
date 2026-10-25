@@ -9,8 +9,13 @@ first **W = 6 h / 24 h**, alive at hour W; outcome = death from any cause within
 | TabPFN v2 | 68 structured features (SOFA inputs, lactate, BE, age, sex) | 0.832 (.681) | 0.837 (.673) | – |
 | UTDE | 21 hourly channels + last 5 notes (Clinical-Longformer) | 0.798 (.618) | 0.844 (.680) | +0.007 [−0.013, +0.026] |
 | **late fusion** (logistic stacker on the two logits, fitted on validation) | both | **0.845 (.704)** | **0.860 (.707)** | **+0.023 [+0.010, +0.035]** |
+| TabPFN + vital-sign aggregates (fair structured baseline, 113 features) | structured incl. HR / RR / SpO2 / Temp / BP | 0.842 (.705) | 0.852 (.684) | +0.015 [+0.007, +0.023] |
+| TabPFN-in-UTDE, 3 streams (frozen TabPFN tokens + time series + notes) | both, one network | 0.836 (.700) | **0.868 (.731)** | **+0.031 [+0.015, +0.046]** |
 
-Test split: 853 stays (6 h) / 1,374 stays (24 h); patient-level 70/15/15 split shared by all three models.
+Test split: 853 stays (6 h) / 1,374 stays (24 h); patient-level 70/15/15 split shared by all models. Against the fair
+structured baseline (TabPFN + the vital signs UTDE sees) the multimodal gain is +0.002 (6 h, ns) / +0.012 (24 h) for the
+late fusion and +0.016 (24 h) for the 3-stream model; see `results/late_fusion/variants_W*.md` and
+`results/tabpfn_vitals/summary_W*.md` (scripts 09–11).
 Full tables with confidence intervals: `results/late_fusion/summary_W{6,24}.md`; attribution of the three models
 (stacker SHAP, TabPFN permutation SHAP, UTDE channel occlusion): `results/fusion_shap/`.
 
@@ -31,6 +36,7 @@ MIMIC-III csv.gz ──01──> data/*.parquet ──03──> results/features
 | – | `utde/setup_utde.sh`, then `run_sofa28.sh` | utde | reference UTDE code @ `XZhang97666/MultimodalMIMIC` 8e513ca + our 7-file adapter patch; training with the original hyper-parameters |
 | 6 | `scripts/06_late_fusion.py` | tabpfn | stacker on validation predictions, paired bootstrap on test → `results/late_fusion/` |
 | 7–8 | `scripts/07_fusion_shap.py`, `08_fusion_shap_figs.py` (+ `utde_attr.py` from the patch) | tabpfn / utde | optional: SHAP / occlusion attribution and figures |
+| 9–11 | `scripts/09_tabpfn_embeddings.py`, `10_fusion_variants.py`, `11_tabpfn_vitals.py` (+ `run_tabemb.sh`, `--tab_emb_mode concat` in the patch; `05 --channel-set sofa`) | tabpfn / utde | optional: frozen TabPFN tokens inside UTDE (3-stream), variable-fair controls |
 
 Step-by-step commands, environments, run times and pitfalls: **`docs/REPRODUCE.md`**.
 

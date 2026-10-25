@@ -107,4 +107,36 @@ Test split of the SOFA cohort (6 h: 853 stays, 24 h: 1,374 stays), 28-day mortal
 4. Two cheap follow-ups fall out of the attribution: give UTDE age and sex (the structured model's #2 feature at 6 h is absent from UTDE), and raise UTDE's note budget (5 → 10; 63 % of 24 h stays have more than 5 notes).
 5. Caveat for both: measurement-count features and note availability encode the care process; the models are valid for the cohort they were trained on (stays with an arterial gas and lactate in the window), not for all ICU admissions.
 
+## 5. Feature-level attribution of the fused logit (both models on one axis)
+
+The stacker is linear, so the fused logit can be split back into the original inputs: (T) = TabPFN SHAP (probability units, mapped
+to logit at each case with p clipped to [0.03, 0.97]) × b₁; (U) = UTDE channel occlusion Δlogit × b₂; the notes term is the
+occlusion with the placeholder note **after removing its uniform shift** (−0.48 logit at 6 h, −1.48 at 24 h): replacing the notes
+by the placeholder moves almost every case in the same direction (92 % negative at 24 h, mean prediction 0.29 → 0.50) and that
+shift carries no ranking information (AUROC of the raw notes attribution as a score: 0.51), so only the case-specific part is kept.
+Approximate (the UTDE side is occlusion, not Shapley); use for ranking and direction.
+
+| rank | 6 h | mean abs | 24 h | mean abs |
+|---|---|---|---|---|
+| 1 | age (T) | 0.36 | gcs_last (T) | 0.60 |
+| 2 | gcs_last (T) | 0.36 | notes (U), offset removed | 0.36 |
+| 3 | notes (U), offset removed | 0.26 | GCS (U) | 0.27 |
+| 4 | GCS (U) | 0.19 | age (T) | 0.24 |
+| 5 | Temp (U) | 0.15 | Urine (U) | 0.20 |
+| 6 | Urine (U) | 0.15 | Lactate (U) | 0.15 |
+| 7 | RR (U) | 0.14 | Temp (U) | 0.14 |
+| 8 | fio2_last (T) | 0.13 | RR (U) | 0.11 |
+| 9 | urine_n (T) | 0.12 | urine_n (T) | 0.11 |
+| 10 | platelets_count (T) | 0.11 | HR (U) | 0.10 |
+| 11 | lactate_last (T) | 0.10 | MeanBP (U) | 0.10 |
+| 12 | Creatinine (U) | 0.10 | DBP (U) | 0.09 |
+
+![fusion feature beeswarm 24 h](fusion_feature_beeswarm_W24.png)
+
+![fusion feature beeswarm 6 h](fusion_feature_beeswarm_W6.png)
+
+* GCS enters twice (structured last value and the UTDE channel) and is the largest single factor at 24 h; age (structured only) ties with it at 6 h.
+* Notes rank 2nd–3rd once the baseline shift is removed — consistent with their modest AUROC contribution (−0.012 / −0.025) in the UTDE-only analysis.
+* The two sides share the top variables (GCS, urine, lactate), which bounds the fusion gain; the structured side adds age and charting counts, the UTDE side adds notes and the temperature / RR / HR trajectories.
+
 Files: `fusion_W{6,24}.json`, `tabpfn_shap_W{6,24}.csv`, `utde_attr_W{6,24}.json`, figures `*.png`; produced by `07_fusion_shap.py`, `utde_attr.py` (UTDE adapter) and `08_fusion_shap_figs.py`.

@@ -8,3 +8,4 @@ results/**/*.npy
 results/**/*.csv
 results/**/*.pkl
 __pycache__/
+!results/fusion_shap/tabpfn_shap_W*.csv

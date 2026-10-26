@@ -61,15 +61,18 @@ def main():
     dl = pd.Series({c: np.abs(full - LG(u[f'drop_{c}'])).mean() for c in chans}).sort_values(ascending=False)
     da = pd.Series({c: auc(u['full']) - auc(u[f'drop_{c}']) for c in chans}).reindex(dl.index)
     md += ['| channel | mean abs Δlogit when occluded | AUROC drop |', '|---|---|---|'] + [f'| {c} | {dl[c]:.3f} | {da[c]:+.3f} |' for c in dl.index] + ['']
+    BINARY = {'Vent', 'Vasopressor', 'Sex'}                       # presence channels: colour = present in the window (1) or not (0)
     Xm = np.full((len(test), len(chans)), np.nan)
     for i, d in enumerate(test):
         v = np.asarray(d['irg_ts'], float); m = np.asarray(d['irg_ts_mask']) == 1
         for j, c in enumerate(chans):
             k = ch.index(c)
-            if m[:, k].any():
+            if c in BINARY:
+                Xm[i, j] = float(v[m[:, k], k].max()) if m[:, k].any() else 0.0
+            elif m[:, k].any():
                 Xm[i, j] = v[m[:, k], k].mean()
     Au = np.column_stack([full - LG(u[f'drop_{c}']) for c in chans])
-    beeswarm(Au, Xm, chans, f'UTDE-SOFA W = {W} h: channel occlusion attribution (logit full − logit without channel); colour = channel mean (z) / value', OUT / f'utde_sofa_beeswarm_W{W}.png', 'attribution to the UTDE-SOFA logit')
+    beeswarm(Au, Xm, chans, f'UTDE-SOFA W = {W} h: channel occlusion attribution (logit full − logit without channel); colour = channel mean (z); 0/1 channels: present in window', OUT / f'utde_sofa_beeswarm_W{W}.png', 'attribution to the UTDE-SOFA logit')
 
     # ---- 3. late fusion TabPFN + UTDE-SOFA: stacker SHAP + feature-level beeswarm
     s_te, s_va = utde_run('_sofavars', W)

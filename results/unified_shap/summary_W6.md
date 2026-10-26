@@ -63,7 +63,13 @@ stacker coefficients TabPFN 0.32, UTDE-SOFA 0.59; mean |SHAP| TabPFN 0.34, UTDE-
 | 14 | BaseExcess (U) | 0.087 |
 | 15 | fio2_last (T) | 0.077 |
 
-## 4. TabPFN-in-UTDE, replace (TabPFN tokens + notes): not available yet
+## 4. TabPFN-in-UTDE, replace (TabPFN tokens + notes) — occlusion
+
+| full | without TabPFN tokens | without notes | without TabPFN tokens and notes |
+|---|---|---|---|
+| 0.827 | 0.577 (−0.251) | 0.826 (−0.001) | 0.498 |
+
+mean |Δlogit| when removed: TabPFN tokens 1.09, notes 0.28
 
 ## 4. TabPFN-in-UTDE, 3 streams (TabPFN tokens + 15-ch time series + notes) — occlusion
 

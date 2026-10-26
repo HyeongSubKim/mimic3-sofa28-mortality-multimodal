@@ -78,5 +78,15 @@
    -0.012066970895420479,
    0.01969436603616982
   ]
+ },
+ {
+  "model": "TabPFN-embedding UTDE, 3 streams, tabular variable set (TabPFN tokens + 15-ch time series + notes)",
+  "auroc": 0.8352874761160327,
+  "auprc": 0.6868167683167736,
+  "d_vs_tabpfn": 0.003557593470408062,
+  "ci": [
+   -0.009520234097383447,
+   0.01611223198505601
+  ]
  }
 ]

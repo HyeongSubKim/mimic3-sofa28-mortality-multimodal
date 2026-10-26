@@ -11,3 +11,4 @@
 | late fusion TabPFN + UTDE with the tabular variable set (15 channels: SOFA inputs, lactate, BE, vent, age, sex) + notes | 0.841 | 0.680 | +0.003 [-0.002, +0.009] |
 | TabPFN-embedding UTDE (TabPFN tokens + notes) | 0.836 | 0.671 | -0.001 [-0.006, +0.004] |
 | TabPFN-embedding UTDE, 3 streams (TabPFN tokens + time series + notes) | 0.868 | 0.731 | +0.031 [+0.015, +0.046] |
+| TabPFN-embedding UTDE, 3 streams, tabular variable set (TabPFN tokens + 15-ch time series + notes) | 0.856 | 0.709 | +0.019 [+0.008, +0.030] |

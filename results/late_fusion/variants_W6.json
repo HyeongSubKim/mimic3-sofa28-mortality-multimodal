@@ -70,6 +70,16 @@
   ]
  },
  {
+  "model": "TabPFN-embedding UTDE (TabPFN tokens + notes)",
+  "auroc": 0.8271301826538929,
+  "auprc": 0.6769170031508317,
+  "d_vs_tabpfn": -0.004677456989308274,
+  "ci": [
+   -0.011630886223616474,
+   0.0019309927373479367
+  ]
+ },
+ {
   "model": "TabPFN-embedding UTDE, 3 streams (TabPFN tokens + time series + notes)",
   "auroc": 0.835771836292941,
   "auprc": 0.7004760739397633,

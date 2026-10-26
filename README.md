@@ -50,7 +50,7 @@ no HR / RR / SpO2 / temperature / blood-pressure channels for UTDE. Test AUROC (
 | TabPFN (68 features) | 0.832 (.681) | – | 0.837 (.673) | – |
 | UTDE-SOFA (15 channels + notes) | 0.823 (.658) | −0.009 [−0.031, +0.013] | 0.826 (.658) | −0.011 [−0.025, +0.002] |
 | late fusion TabPFN + UTDE-SOFA | 0.839 (.688) | +0.008 [−0.008, +0.023] | 0.841 (.680) | +0.003 [−0.002, +0.009] |
-| TabPFN-in-UTDE, replace (TabPFN tokens + notes) | – | | 0.836 (.671) | −0.001 [−0.006, +0.004] |
+| TabPFN-in-UTDE, replace (TabPFN tokens + notes) | 0.827 (.677) | −0.005 [−0.012, +0.002] | 0.836 (.671) | −0.001 [−0.006, +0.004] |
 | **TabPFN-in-UTDE, 3 streams (TabPFN tokens + 15-ch time series + notes)** | 0.835 (.687) | +0.004 [−0.010, +0.016] | **0.856 (.709)** | **+0.019 [+0.008, +0.030]** |
 
 Attribution on the same models (`results/unified_shap/summary_W{6,24}.md`, figures alongside):

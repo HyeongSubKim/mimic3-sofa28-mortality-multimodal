@@ -53,11 +53,11 @@ no HR / RR / SpO2 / temperature / blood-pressure channels for UTDE. Test AUROC (
 | TabPFN-in-UTDE, replace (TabPFN tokens + notes) | 0.827 (.677) | −0.005 [−0.012, +0.002] | 0.836 (.671) | −0.001 [−0.006, +0.004] |
 | **TabPFN-in-UTDE, 3 streams (TabPFN tokens + 15-ch time series + notes)** | 0.835 (.687) | +0.004 [−0.010, +0.016] | **0.856 (.709)** | **+0.019 [+0.008, +0.030]** |
 
-Attribution on the same models (`results/unified_shap/summary_W{6,24}.md`, figures alongside):
+Attribution on the same models, cross-model comparisons all by occlusion (`results/unified_shap/summary_W{6,24}.md`, `occlusion_table_W{6,24}.md`, `REPORT.md`, figures alongside):
 
 | model | what drives it (24 h) | notes' share (AUROC when removed) |
 |---|---|---|
-| TabPFN | `gcs_last` ≫ `age` > urine / lactate / BE aggregates (permutation SHAP) | – |
+| TabPFN | GCS (−0.059) ≫ age (−0.017) ≈ urine (−0.016) > SOFA component scores (−0.009) (variable-group occlusion: the group's columns set to NaN; `13_tabpfn_occlusion.py`); permutation SHAP kept for the TabPFN-only deep dive and agrees | – |
 | UTDE-SOFA | GCS (−0.057) > Age (−0.020) > lactate / PaO2 / bilirubin (occlusion); at 6 h Age ≈ GCS lead | −0.023 (6 h −0.018) |
 | late fusion | TabPFN logit 61 % of the fused logit at 24 h (39 % at 6 h); GCS and age enter through both paths, logit corr. 0.91 | via the UTDE logit only |
 | replace | TabPFN tokens −0.274 when removed; notes −0.002 — the note branch is not used | ≈ 0 |

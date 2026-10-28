@@ -89,6 +89,8 @@ python scripts/05_build_utde_dataset.py --windows 24 6 --channel-set sofa --out 
 cd ../MultimodalMIMIC && GPU=0 W=24 DATA_DIR=Data/sofa28_sofa D_TS=15 TAG=_sofavars bash run_sofa28.sh
 python scripts/10_fusion_variants.py --window 24      # all UTDE variants + their fusion with TabPFN on one table
 HF_HOME=... python scripts/11_tabpfn_vitals.py --window 24   # TabPFN + vital-sign aggregates (fair structured baseline)
+python scripts/12_unified_shap.py --window 24                # attribution of the unified-variable models (UTDE-SOFA / fusion / 3-stream occlusion)
+HF_HOME=... python scripts/13_tabpfn_occlusion.py --window 24   # TabPFN variable-group occlusion (~15 min) + all-occlusion fusion figure + TabPFN-vs-UTDE table
 ```
 
 ## Pitfalls
